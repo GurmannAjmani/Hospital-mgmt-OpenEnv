@@ -39,16 +39,57 @@ The environment provides a comprehensive numerical and categorical view of the h
 - `next_patient_health` (float): Current HP of the front patient (out of 100.0).
 - `deaths` (int): Accumulating death toll for the duration of the episode.
 - `steps_remaining` (int): Steps until the shift successfully ends.
+- `most_urgent_health` (float): Health of the patient with the lowest HP in the queue.
+
+## Core Environment API
+
+The environment follows the **OpenEnv interface**, enabling seamless interaction between LLMs and RL agents.
+
+- **`reset(config: dict = None) -> HospitalMgmtObservation`**:
+    - Initializes a new episode with a unique ID and `step_count = 0`.
+    - Accepts an optional configuration to set `difficulty` ("easy", "medium", or "hard").
+    - Pre-populates a queue of patients based on difficulty constraints.
+    - Sets bed capacity, health decay rate, and the shift duration (`max_steps`).
+
+- **`step(action: HospitalMgmtAction) -> HospitalMgmtObservation`**:
+    - Increments the internal `step_count`.
+    - Updates environment logic: Patient health decays based on their severity and environmental factors (Waiting patients lose HP every step).
+    - Applies the selected action to the patient at the front of the queue.
+    - Returns the updated observation, current reward, and the `done` status.
+
+- **`state() -> State`**:
+    - Returns the current environment metadata, specifically the `episode_id` and the current `step_count`.
+
+## Reward Function and Termination
+
+The environment employs a sophisticated dual-reward system designed to balance immediate precision with episodic outcomes. The total possible episodic reward is normalized to **1.0**.
+
+### 1. Dense Action Rewards (Weight: 50%)
+Assigned immediately after each `step()` based on the triage decision:
+- **Optimal admit (+0.5 / total_patients):** Correct allocation (Critical → ICU, Mild → Ward).
+- **Suboptimal admit (+0.25 / total_patients):** Mismatched allocation (Critical → Ward, Mild → ICU).
+- **Wait or Conflict (0.0):** No admission or attempting to admit to a full bed pool.
+
+### 2. Sparse Termination Rewards (Weight: 50%)
+Calculated only at the end of the episode to incentivize patient survival:
+- **Perfect Performance (0.50):** 0 deaths and all patients successfully treated.
+- **Survivorship Bonus (0.25 - 0.40):** Base reward if no deaths occurred, vary by difficulty.
+- **Death Penalty:** A linear penalty is subtracted for each death until the hospital collapses.
+
+### 3. Episode Termination (`done`)
+An episode concludes immediately when either of these conditions is met:
+- **Shift Duration:** The internal clock reaching `max_steps` (16 to 30 steps depending on difficulty).
+- **Hospital Collapse:** The death toll reaching the difficulty threshold (4 for Easy, 2 for Medium/Hard). Once collapsed, the total reward for the episode is strictly limited.
 
 ## Task Descriptions & Difficulties
 
 The environment supports three distinct difficulty configurations, directly impacting the constraint tightness, available beds, and patient deterioration rates:
 
-| Task / Difficulty | Initial Patients | ICU Beds | Ward Beds | Decay Multiplier | Collapse Limit | Description |
-|-------------------|------------------|----------|-----------|------------------|----------------|-------------|
-| **Easy** | 10 | 10 | 20 | Normal (1.0x) | 4 deaths | Plentiful resources and slower decay. Forgives heavy mistakes while agents grasp basic mechanics and ICU placements. |
-| **Medium** | 12 | 4 | 8 | Fast (1.8x) | 2 deaths | Beds dynamically match patient severity. Agents must carefully distribute limited ICU vs Ward beds. |
-| **Hard** | 12 | 3 | 9 | Extreme (2.4x) | 2 deaths | Severe shortage of ICU beds. Agents must prioritize effectively and make life-or-death capacity trades instantly. |
+| Task / Difficulty | Initial Patients | ICU Beds | Ward Beds | Decay Multiplier | Collapse Limit | Shift Duration (Steps) | Description |
+|-------------------|------------------|----------|-----------|------------------|----------------|------------------------|-------------|
+| **Easy** | 10 | 10 | 20 | Normal (1.0x) | 4 deaths | 30 steps | Plentiful resources and slower decay. Forgives heavy mistakes while agents grasp basic mechanics and ICU placements. |
+| **Medium** | 12 | 4 | 8 | Fast (1.8x) | 2 deaths | 20 steps | Beds dynamically match patient severity. Agents must carefully distribute limited ICU vs Ward beds. |
+| **Hard** | 12 | 3 | 9 | Extreme (2.4x) | 2 deaths | 16 steps | Severe shortage of ICU beds. Agents must prioritize effectively and make life-or-death capacity trades instantly. |
 
 ## Expected Baseline Scores
 
