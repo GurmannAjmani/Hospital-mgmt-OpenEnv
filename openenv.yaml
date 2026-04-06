@@ -1,0 +1,9 @@
+spec_version: 1
+name: hospital_mgmt_env
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860  # IMPORTANT: Change this to 7860 mapping
+variables:
+  WORKERS: 4
+  MAX_CONCURRENT_ENVS: 100
