@@ -37,6 +37,7 @@ import os
 import re
 import textwrap
 from typing import List, Optional
+import numpy as np
 
 try:
     from dotenv import load_dotenv
@@ -48,7 +49,9 @@ from openai import OpenAI
 
 from models import HospitalMgmtAction, HospitalMgmtObservation
 from server.hospital_mgmt_env_environment import HospitalMgmtEnvironment
-#  
+from training.dqn_agent import DQNAgent
+
+# Configuration
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct")
@@ -130,7 +133,6 @@ def get_model_action(client: OpenAI, step: int, obs: HospitalMgmtObservation, la
             stream=False,
         )
         text = (completion.choices[0].message.content or "").strip()
-        # Parse output for the integer action
         match = re.search(r'[0-3]', text)
         return int(match.group()) if match else 0
     except Exception as exc:
@@ -138,59 +140,148 @@ def get_model_action(client: OpenAI, step: int, obs: HospitalMgmtObservation, la
         return 0
 
 
-def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+def obs_to_vector(obs: HospitalMgmtObservation, max_steps: int) -> List[float]:
+    """Vectorize observation for DQN."""
+    return [
+        float(obs.er_queue_size),
+        float(obs.icu_available),
+        float(obs.ward_available),
+        obs.avg_patient_health / 100.0,
+        float(obs.critical_count),
+        obs.next_patient_severity / 5.0,
+        obs.next_patient_health / 100.0,
+        float(obs.deaths),
+        obs.steps_remaining / float(max_steps),
+    ]
 
-    # Directly hook into the python environment core (Bypassing Docker and Clients)
+
+def run_llm_inference(client: OpenAI, task_name: str) -> None:
+    """Run baseline LLM inference."""
     env = HospitalMgmtEnvironment()
-
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
-    success = False
-
-    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
-
+    
+    log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
+    
     try:
-        obs = env.reset(config={"difficulty": TASK_NAME})
+        obs = env.reset(config={"difficulty": task_name})
         last_reward = 0.0
+        max_steps_local = env.max_steps
 
-        for step in range(1, MAX_STEPS + 1):
+        for step in range(1, max_steps_local + 1):
             if obs.done:
                 break
 
             action_idx = get_model_action(client, step, obs, last_reward, history)
-
             obs = env.step(HospitalMgmtAction(action_type=action_idx))
 
             reward = obs.reward or 0.0
             done = obs.done
-            error = None
-
+            
             rewards.append(reward)
             steps_taken = step
             last_reward = reward
 
-            log_step(step=step, action=str(action_idx), reward=reward, done=done, error=error)
-
+            log_step(step=step, action=str(action_idx), reward=reward, done=done, error=None)
             history.append(f"Step {step}: Action={action_idx} -> reward {reward:+.2f}")
 
             if done:
                 break
 
-        # Normalize the score by dividing by the theoretical maximum reward
-        # (12 patients * 1.0 max dense reward) + 0.5 sparse reward = 12.5 for hard/medium
-        max_reward = 12.5 if TASK_NAME in ["hard", "medium"] else 10.5
-        score = sum(rewards) / max_reward
-        score = min(max(score, 0.0), 1.0)
+        max_reward = 12.5 if task_name in ["hard", "medium"] else 10.5
+        score = min(max(sum(rewards) / max_reward, 0.0), 1.0)
         success = score >= SUCCESS_SCORE_THRESHOLD
-
-    except Exception as e:
-        print(f"[DEBUG] Runtime error: {e}", flush=True)
-    finally:
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+    except Exception as e:
+        print(f"[DEBUG] LLM Runtime error: {e}", flush=True)
+
+
+def train_dqn(task_name: str, epochs: int = 150) -> DQNAgent:
+    """Train DQN agent."""
+    env = HospitalMgmtEnvironment()
+    # State dim is 9, Action dim is 4
+    agent = DQNAgent(state_dim=9, action_dim=4)
+    
+    for _ in range(epochs):
+        obs = env.reset(config={"difficulty": task_name})
+        state = obs_to_vector(obs, env.max_steps)
+        done = False
+        
+        while not done:
+            action = agent.select_action(state)
+            obs = env.step(HospitalMgmtAction(action_type=action))
+            next_state = obs_to_vector(obs, env.max_steps)
+            reward = obs.reward or 0.0
+            done = obs.done
+            
+            agent.memory.append((state, action, reward, next_state, float(done)))
+            agent.train_step()
+            
+            state = next_state
+    
+    return agent
+
+
+def run_dqn_inference(agent: DQNAgent, task_name: str) -> None:
+    """Run inference using trained DQN agent."""
+    env = HospitalMgmtEnvironment()
+    rewards: List[float] = []
+    steps_taken = 0
+    
+    log_start(task=task_name, env=BENCHMARK, model="DQN-Agent")
+    
+    try:
+        obs = env.reset(config={"difficulty": task_name})
+        max_steps_local = env.max_steps
+
+        for step in range(1, max_steps_local + 1):
+            if obs.done:
+                break
+
+            state = obs_to_vector(obs, max_steps_local)
+            # Use greedy action for inference
+            epsilon_save = agent.epsilon
+            agent.epsilon = 0.0
+            action_idx = agent.select_action(state)
+            agent.epsilon = epsilon_save
+            
+            obs = env.step(HospitalMgmtAction(action_type=action_idx))
+
+            reward = obs.reward or 0.0
+            done = obs.done
+            
+            rewards.append(reward)
+            steps_taken = step
+
+            log_step(step=step, action=str(action_idx), reward=reward, done=done, error=None)
+
+            if done:
+                break
+
+        max_reward = 12.5 if task_name in ["hard", "medium"] else 10.5
+        score = min(max(sum(rewards) / max_reward, 0.0), 1.0)
+        success = score >= SUCCESS_SCORE_THRESHOLD
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+    except Exception as e:
+        print(f"[DEBUG] DQN Runtime error: {e}", flush=True)
+
+
+def main() -> None:
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+
+    # 1. Baseline Execution (LLM-based)
+    run_llm_inference(client, TASK_NAME)
+
+    # 2. Loop through 3 tasks, train and evaluate DQN
+    tasks = ["easy", "medium", "hard"]
+    for task in tasks:
+        # Train for 500 epochs
+        agent = train_dqn(task, epochs=500)
+        # Display output in exact format (Inference)
+        run_dqn_inference(agent, task)
+
 
 
 if __name__ == "__main__":
-    main()
+    main()
