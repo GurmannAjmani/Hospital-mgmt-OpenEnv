@@ -53,7 +53,6 @@ def train(num_epochs: int, difficulty: str, report_interval: int = 500):
             obs, reward, done = env.step(action)
             next_state = env.obs_to_vector(obs)
 
-            # Store transition & learn
             agent.memory.append((state, action, reward, next_state, float(done)))
             agent.train_step()
 
@@ -62,7 +61,6 @@ def train(num_epochs: int, difficulty: str, report_interval: int = 500):
 
         all_rewards.append(episode_reward)
 
-        # ── Periodic Report ──────────────────────────────────
         if ep % report_interval == 0:
             window = all_rewards[-report_interval:]
             avg = np.mean(window)
@@ -82,12 +80,10 @@ def train(num_epochs: int, difficulty: str, report_interval: int = 500):
             )
 
     pbar.close()
-
-    # ── Final Summary ────────────────────────────────────────
     total_time = time.time() - start_time
     final_avg = np.mean(all_rewards[-report_interval:])
     print("\n" + "=" * 60)
-    print(f"  ✅ Training Complete")
+    print(f"  Training Complete")
     print(f"  Total time  : {total_time:.1f}s")
     print(f"  Final avg   : {final_avg:.2f}")
     print(f"  Best avg    : {best_avg:.2f}")

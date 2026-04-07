@@ -20,13 +20,10 @@ with st.sidebar:
     
     st.markdown("---")
     train_btn = st.button("Start Training", use_container_width=True, type="primary")
-    
-    # Reloads the entire app to reset state
     reset_btn = st.button("Reset Environment", use_container_width=True)
     if reset_btn:
         st.rerun()
 
-# ─── MAIN LAYOUT ─────────────────────────────────────────────────────────────
 st.subheader("Training Progress")
 progress_text = st.empty()
 progress_bar = st.empty()
@@ -37,7 +34,6 @@ col1, col2 = st.columns([2, 1])
 with col1:
     st.subheader(" Reward vs Epoch")
     chart_placeholder = st.empty()
-    # Keep an empty line chart initially
     chart_placeholder.line_chart(pd.DataFrame(columns=["Reward", "100-Ep Moving Avg"]), color=["#d3d3d3", "#ff0000"])
 
 with col2:
@@ -48,7 +44,6 @@ with col2:
 
 
 if train_btn:
-    # Initialize Environment & Agent
     env = HospitalTriageEnv()
     agent = DQNAgent(
         state_dim=HospitalTriageEnv.STATE_DIM,
@@ -56,8 +51,6 @@ if train_btn:
     )
     
     all_rewards = []
-    
-    # Initialize progress bar visually
     progress_bar.progress(0.0)
     
     for ep in range(1, epochs + 1):
@@ -83,7 +76,6 @@ if train_btn:
             obs, reward, done = env.step(action)
             next_state = env.obs_to_vector(obs)
             
-            # Store and Train
             agent.memory.append((state, action, reward, next_state, float(done)))
             agent.train_step()
             
@@ -93,25 +85,20 @@ if train_btn:
             
         all_rewards.append(episode_reward)
         
-        # UI Refresh
         if log_this_epoch:
             deaths = env.logic.get_stats()["deaths"]
             log_str = "\n".join(logs)
             
-            # Update action log
             with log_container.expander(f"Episode {ep} | {deaths} Deaths | Reward: {episode_reward:.2f}", expanded=False):
                 st.code(log_str, language="text")
             
-            # Update chart with moving average
             df = pd.DataFrame({"Reward": all_rewards})
             df["100-Ep Moving Avg"] = df["Reward"].rolling(min(100, max(1, len(all_rewards))), min_periods=1).mean()
             chart_placeholder.line_chart(df, color=["#d3d3d3", "#ff0000"])
             
-            # Update Progress Bar dynamically
             pct = ep / epochs
             progress_bar.progress(pct)
             progress_text.markdown(f"**Processed:** `{ep} / {epochs}` epochs")
             
-    # Finalize
     progress_bar.progress(1.0)
     success_placeholder.success(f"Training completed successfully! Final moving average reward: {np.mean(all_rewards[-100:]):.2f}")

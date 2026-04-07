@@ -51,7 +51,6 @@ from models import HospitalMgmtAction, HospitalMgmtObservation
 from server.hospital_mgmt_env_environment import HospitalMgmtEnvironment
 from training.dqn_agent import DQNAgent
 
-# Configuration
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct")
@@ -60,7 +59,7 @@ BENCHMARK = os.getenv("HOSPITAL_MGMT_BENCHMARK", "hospital_mgmt_env")
 MAX_STEPS = 30
 TEMPERATURE = 0.1
 MAX_TOKENS = 10
-SUCCESS_SCORE_THRESHOLD = 0.5  # normalized score in [0, 1]
+SUCCESS_SCORE_THRESHOLD = 0.5
 
 SYSTEM_PROMPT = textwrap.dedent(
     """
@@ -240,7 +239,6 @@ def run_dqn_inference(agent: DQNAgent, task_name: str) -> None:
                 break
 
             state = obs_to_vector(obs, max_steps_local)
-            # Use greedy action for inference
             epsilon_save = agent.epsilon
             agent.epsilon = 0.0
             action_idx = agent.select_action(state)
@@ -269,16 +267,10 @@ def run_dqn_inference(agent: DQNAgent, task_name: str) -> None:
 
 def main() -> None:
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-
-    # 1. Baseline Execution (LLM-based)
     run_llm_inference(client, TASK_NAME)
-
-    # 2. Loop through 3 tasks, train and evaluate DQN
     tasks = ["easy", "medium", "hard"]
     for task in tasks:
-        # Train for 500 epochs
         agent = train_dqn(task, epochs=500)
-        # Display output in exact format (Inference)
         run_dqn_inference(agent, task)
 
 
