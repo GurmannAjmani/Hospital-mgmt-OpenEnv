@@ -19,9 +19,9 @@ from .hospital_logic import PatientManager
 
 # Sparse reward tables per difficulty (Scaled to max 0.5 so total dense + sparse <= 1.0)
 SPARSE_REWARDS = {
-    "easy":   {"perfect": 0.5, "no_deaths": 0.40, "death_penalty": 0.075, "collapse": 0.0},
-    "medium": {"perfect": 0.5, "no_deaths": 0.35, "death_penalty": 0.100, "collapse": 0.0},
-    "hard":   {"perfect": 0.5, "no_deaths": 0.25, "death_penalty": 0.075, "collapse": 0.0},
+    "easy":   {"perfect": 0.45, "no_deaths": 0.35, "death_penalty": 0.07, "collapse": 0.05},
+    "medium": {"perfect": 0.45, "no_deaths": 0.30, "death_penalty": 0.09, "collapse": 0.05},
+    "hard":   {"perfect": 0.45, "no_deaths": 0.20, "death_penalty": 0.07, "collapse": 0.05},
 }
 
 
@@ -75,7 +75,7 @@ class HospitalMgmtEnvironment(Environment):
         elif deaths == 0:
             return table["no_deaths"]
         elif deaths < self.logic.collapse_threshold:
-            return max(0.0, table["no_deaths"] - table["death_penalty"] * deaths)
+            return max(0.05, table["no_deaths"] - table["death_penalty"] * deaths)
         else:
             return table["collapse"]
 

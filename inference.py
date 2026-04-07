@@ -190,7 +190,7 @@ def run_llm_inference(client: OpenAI, task_name: str) -> None:
                 break
 
         max_reward = 12.5 if task_name in ["hard", "medium"] else 10.5
-        score = min(max(sum(rewards) / max_reward, 0.0), 1.0)
+        score = min(max(sum(rewards) / max_reward, 0.01), 0.99)
         success = score >= SUCCESS_SCORE_THRESHOLD
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
     except Exception as e:
@@ -260,7 +260,7 @@ def run_dqn_inference(agent: DQNAgent, task_name: str) -> None:
                 break
 
         max_reward = 12.5 if task_name in ["hard", "medium"] else 10.5
-        score = min(max(sum(rewards) / max_reward, 0.0), 1.0)
+        score = min(max(sum(rewards) / max_reward, 0.01), 0.99)
         success = score >= SUCCESS_SCORE_THRESHOLD
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
     except Exception as e:
@@ -284,4 +284,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main()

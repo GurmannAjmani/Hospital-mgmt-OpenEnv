@@ -62,19 +62,21 @@ The environment follows the **OpenEnv interface**, enabling seamless interaction
 
 ## Reward Function and Termination
 
-The environment employs a sophisticated dual-reward system designed to balance immediate precision with episodic outcomes. The total possible episodic reward is normalized to **1.0**.
+The environment employs a sophisticated dual-reward system designed to balance immediate precision with episodic outcomes. To ensure numerical stability and compatibility with diverse RL algorithms, **rewards are never exactly 0.0 and never exactly 1.0** (strictly within the range `(0.0, 1.0)`).
 
-### 1. Dense Action Rewards (Weight: 50%)
+### 1. Dense Action Rewards
 Assigned immediately after each `step()` based on the triage decision:
-- **Optimal admit (+0.5 / total_patients):** Correct allocation (Critical → ICU, Mild → Ward).
-- **Suboptimal admit (+0.25 / total_patients):** Mismatched allocation (Critical → Ward, Mild → ICU).
-- **Wait or Conflict (0.0):** No admission or attempting to admit to a full bed pool.
+- **Optimal Outcome (0.95):** Perfect patient allocation (e.g., Critical → ICU). 
+- **Suboptimal Outcome (0.80):** Functional but non-ideal allocation (e.g., Critical → Ward).
+- **Inefficient Actions (0.30 - 0.40):** Mistake actions like attempting to admit to a full bed pool or waiting when beds are free for critical patients.
+- **Failures (0.05):** The lowest possible reward, given for actions that actively harm the hospital state or violate basic logic.
 
-### 2. Sparse Termination Rewards (Weight: 50%)
-Calculated only at the end of the episode to incentivize patient survival:
-- **Perfect Performance (0.50):** 0 deaths and all patients successfully treated.
-- **Survivorship Bonus (0.25 - 0.40):** Base reward if no deaths occurred, vary by difficulty.
+### 2. Sparse Termination Rewards
+Calculated only at the end of the episode to incentivize long-term patient survival:
+- **Perfect Performance (0.45):** 0 deaths and all patients successfully treated.
+- **Survivorship Bonus (0.20 - 0.35):** Base reward if no deaths occurred, varying by difficulty.
 - **Death Penalty:** A linear penalty is subtracted for each death until the hospital collapses.
+- **Collapse Floor (0.05):** The minimum sparse reward returned even in a total system failure.
 
 ### 3. Episode Termination (`done`)
 An episode concludes immediately when either of these conditions is met:

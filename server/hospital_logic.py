@@ -68,9 +68,9 @@ class PatientManager:
                     self.deaths += 1
 
     def apply_action(self, action_idx):
-        reward = 0
+        reward = 0.05
         if not self.patients:
-            return 0
+            return 0.05
 
         target = self.patients[0]
 
@@ -81,9 +81,9 @@ class PatientManager:
             beds_free = (self.icu_occupied < self.max_icu or
                          self.ward_occupied < self.max_ward)
             if critical_waiting and beds_free:
-                reward = 0.0
+                reward = 0.05
             else:
-                reward = 0.375
+                reward = 0.4
 
         elif action_idx == 1:  # ICU
             if self.icu_occupied < self.max_icu:
@@ -91,9 +91,9 @@ class PatientManager:
                 target.status = "treated"
                 # Correct placement: critical patient in ICU
                 # Wrong placement: mild patient in ICU (wastes bed but saves patient)
-                reward = 1.0 if target.severity <= 2 else 0.0
+                reward = 0.95 if target.severity <= 2 else 0.05
             else:
-                reward = 0.25  # ICU full
+                reward = 0.3  # ICU full
 
         elif action_idx == 2:  # Ward
             if self.ward_occupied < self.max_ward:
@@ -101,9 +101,9 @@ class PatientManager:
                 target.status = "treated"
                 # Correct placement: mild patient in ward
                 # Suboptimal: critical patient in ward (saved but should be ICU)
-                reward = 0.75 if target.severity > 2 else 0.25
+                reward = 0.8 if target.severity > 2 else 0.3
             else:
-                reward = 0.25  # Ward full
+                reward = 0.3  # Ward full
 
         self.patients = [p for p in self.patients if p.status == "waiting"]
         return reward

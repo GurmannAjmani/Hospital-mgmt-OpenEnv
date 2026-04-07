@@ -4,9 +4,9 @@ from .hospital_logic import PatientManager
 
 # Sparse reward tables per difficulty — KEY to enforcing Easy > Medium > Hard
 SPARSE_REWARDS = {
-    "easy":   {"perfect": 1.0, "no_deaths": 0.8, "death_penalty": 0.15, "collapse": 0.0},
-    "medium": {"perfect": 1.0, "no_deaths": 0.7, "death_penalty": 0.2, "collapse": 0.0},
-    "hard":   {"perfect": 1.0, "no_deaths": 0.5, "death_penalty": 0.15, "collapse": 0.0},
+    "easy":   {"perfect": 0.95, "no_deaths": 0.75, "death_penalty": 0.14, "collapse": 0.05},
+    "medium": {"perfect": 0.95, "no_deaths": 0.65, "death_penalty": 0.18, "collapse": 0.05},
+    "hard":   {"perfect": 0.95, "no_deaths": 0.45, "death_penalty": 0.14, "collapse": 0.05},
 }
 
 class HospitalTriageEnv:
@@ -58,13 +58,11 @@ class HospitalTriageEnv:
         deaths = self.logic.deaths
         
         if self.logic.is_collapsed():
-            return 0.0
+            return 0.05
             
-        # If no one dies, they get the full 0.5. For each death, they lose a fraction.
-        # This securely binds the second half of the 1.0 pie dynamically.
-        penalty_per_death = 0.5 / self.logic.collapse_threshold
+        penalty_per_death = 0.4 / self.logic.collapse_threshold
         
-        return max(0.0, 0.5 - (deaths * penalty_per_death))
+        return max(0.05, 0.45 - (deaths * penalty_per_death))
 
     def step(self, action: int):
         """Accept an integer action (0-3) and return (obs, reward, done)."""
